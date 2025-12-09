@@ -4,7 +4,7 @@
   "Scope": {},
   "Source": {
     "Owner": "AWS",
-    "SourceIdentifier": "RESTRICTED_SSH"
+    "SourceIdentifier": "restricted-ssh"
   },
   "MaximumExecutionFrequency": "TwentyFour_Hours"
 }
