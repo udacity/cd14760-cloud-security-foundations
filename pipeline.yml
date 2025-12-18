@@ -1,0 +1,110 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CodePipeline for deploying AWS Config Restricted-SSH rule (single-region)
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Description: Your GitHub username or organization
+    Default: udacity
+  GitHubRepo:
+    Type: String
+    Description: Repository name
+    Default: cd14760-cloud-security-foundations
+  GitHubBranch:
+    Type: String
+    Description: Branch to pull from
+    Default: main
+  GitHubTokenSecretName:
+    Type: String
+    Description: Secrets Manager secret name for GitHub OAuth token
+    Default: GitHubToken2
+  ArtifactBucket:
+    Type: String
+    Description: S3 bucket for pipeline artifacts
+    Default: config-restricted-ssh
+  CodePipelineRoleArn:
+    Type: String
+    Description: ARN of the CodePipeline service role
+    Default: arn:aws:iam::001715059841:role/codepipeline-service-role
+  CodeBuildRoleArn:
+    Type: String
+    Description: ARN of the CodeBuild service role
+    Default: arn:aws:iam::001715059841:role/codebuild-service-role
+
+Resources:
+  ConfigPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: Config-Restricted-SSH-Pipeline
+      RoleArn: !Ref CodePipelineRoleArn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHubSource
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: '1'
+              Configuration:
+                Owner: !Ref GitHubOwner
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Sub '{{resolve:secretsmanager:${GitHubTokenSecretName}:SecretString}}'
+              OutputArtifacts:
+                - Name: SourceArtifact
+              RunOrder: 1
+
+        - Name: Deploy
+          Actions:
+            - Name: DeployConfigRule
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              InputArtifacts:
+                - Name: SourceArtifact
+              Configuration:
+                ProjectName: !Ref ConfigBuildProject
+              RunOrder: 1
+
+  ConfigBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: Config-Restricted-SSH-Build
+      ServiceRole: !Ref CodeBuildRoleArn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: false
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                python: 3.11
+              commands:
+                - pip install awscli --upgrade
+            build:
+              commands:
+                - echo "Deploying AWS Config Rule for Restricted SSH"
+                # Put the Config Rule (assumes template.yaml contains the rule JSON)
+                - aws configservice put-config-rule --config-rule file://template.yaml
+                # Optional: Describe and verify
+                - aws configservice describe-config-rules --config-rule-names org-restricted-ssh
+          artifacts:
+            files: '**/*'
+
+Outputs:
+  PipelineName:
+    Value: !Ref ConfigPipeline
+    Description: Name of the created CodePipeline

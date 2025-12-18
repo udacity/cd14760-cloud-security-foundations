@@ -3,8 +3,7 @@
   "Description": "Security groups must not allow SSH from 0.0.0.0/0",
   "Scope": {},
   "Source": {
-    "Owner": "AWS",
-    "SourceIdentifier": "INCOMING_SSH_DISABLED"
+    
   },
   "MaximumExecutionFrequency": "TwentyFour_Hours"
 }

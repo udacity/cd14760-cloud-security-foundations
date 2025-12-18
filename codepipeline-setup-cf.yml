@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Parameterized CloudFormation template that creates a reusable IAM Role.
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Default: tscotto-udacity-config-restricted-ssh
+    Description: "Exact S3 bucket name to create and reference in the inline policy"
+
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  S3BucketPublicAccessPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyPublicAcls
+            Effect: Deny
+            Principal: "*"
+            Action:
+              - s3:PutObjectAcl
+              - s3:PutBucketAcl
+              - s3:PutObject
+            Resource:
+              - !Sub "arn:aws:s3:::${S3BucketName}"
+              - !Sub "arn:aws:s3:::${S3BucketName}/*"
+            Condition:
+              StringEquals:
+                s3:x-amz-acl:
+                  - public-read
+                  - public-read-write
+                  - authenticated-read
+
+
+
+  CustomIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: codepipeline-service-role-cf
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: CodePipelineInlinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetProjects
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BucketName}"
+                  - !Sub "arn:aws:s3:::${S3BucketName}/*"
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource: "arn:aws:secretsmanager:*:*:secret:GitHubToken*"
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: codebuild-service-role-cf
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSConfigRulesExecutionRole
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        
+
+Outputs:
+  CodePipelineRoleName:
+    Description: Name of the created CodePipeline role
+    Value: !Ref CustomIamRole
+  CodePipelineRoleArn:
+    Description: ARN of the created CodePipeline role
+    Value: !GetAtt CustomIamRole.Arn
+  CodeBuildRoleName:
+    Description: Name of the created CodeBuild role
+    Value: !Ref CodeBuildServiceRole
+  CodeBuildRoleArn:
+    Description: ARN of the created CodeBuild role
+    Value: !GetAtt CodeBuildServiceRole.Arn
